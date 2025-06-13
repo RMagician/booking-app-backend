@@ -1,3 +1,6 @@
 {
-    "iis.configDir": ""
+  "iis.configDir": "",
+  "python.testing.pytestArgs": ["tests"],
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestEnabled": true
 }

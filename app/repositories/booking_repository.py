@@ -50,6 +50,20 @@ class BookingRepository:
         Returns:
             Booking: The created booking object
         """
+        # Ensure service_id is a PyObjectId before creating the Booking instance
+        if "service_id" in booking_data and isinstance(
+            booking_data["service_id"], str
+        ):
+            try:
+                booking_data["service_id"] = PyObjectId(
+                    booking_data["service_id"]
+                )
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid service_id format: {booking_data['service_id']}. Error: {e}",
+                )
+
         # Create a new booking object
         booking = Booking(**booking_data)
 
@@ -85,6 +99,11 @@ class BookingRepository:
 
         # Query the booking by ID
         document = await self.collection.find_one({"_id": object_id})
+        if document is None:
+            document = await self.collection.find_one({"_id": str(object_id)})
+        if document is None:
+            return None
+
         return Booking.from_mongo(document)
 
     async def get_bookings_by_service(
@@ -242,10 +261,15 @@ class BookingRepository:
 
         if result.modified_count == 0:
             # No document was modified
-            return None
+            result = await self.collection.update_one(
+                {"_id": str(object_id)}, {"$set": update_data}
+            )
+            if result.modified_count == 0:
+                return None
 
         # Retrieve and return the updated booking
-        return await self.get_booking(booking_id)
+        updated_booking = await self.get_booking(booking_id)
+        return updated_booking
 
     async def delete_booking(self, booking_id: str) -> bool:
         """

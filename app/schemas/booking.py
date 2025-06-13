@@ -4,9 +4,10 @@ Booking schema module for data validation and conversion
 
 from datetime import datetime
 from typing import List, Optional
-from pydantic import BaseModel, Field, field_validator, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 from app.models.booking import BookingStatus
+from app.models.service import PyObjectId  # Import the new PyObjectId
 
 
 class BookingBase(BaseModel):
@@ -16,9 +17,15 @@ class BookingBase(BaseModel):
         ..., min_length=2, max_length=100, description="Name of the customer"
     )
     date: datetime = Field(..., description="Date and time of the booking")
-    service_id: str = Field(..., description="ID of the service being booked")
+    service_id: PyObjectId = Field(
+        ..., description="ID of the service being booked"
+    )
     status: BookingStatus = Field(
         default=BookingStatus.PENDING, description="Status of the booking"
+    )
+
+    model_config = ConfigDict(
+        populate_by_name=True,
     )
 
     # Validate booking date - no past bookings
@@ -58,7 +65,7 @@ class BookingUpdate(BaseModel):
 
     customer_name: Optional[str] = Field(None, min_length=2, max_length=100)
     date: Optional[datetime] = None
-    service_id: Optional[str] = None
+    service_id: Optional[PyObjectId] = None
     status: Optional[BookingStatus] = None
 
     # Validate booking date if provided
@@ -85,34 +92,35 @@ class BookingUpdate(BaseModel):
             raise ValueError("At least one field must be provided for update")
         return value
 
-    model_config = ConfigDict(extra="forbid")  # Prevent additional fields
+    model_config = ConfigDict(extra="forbid")  # Ensured this line
 
 
 class BookingRead(BookingBase):
     """Schema for reading a Booking"""
 
-    id: str = Field(..., description="Unique identifier for the booking")
+    id: PyObjectId = Field(..., description="Unique identifier for the booking")
     created_at: datetime
     updated_at: datetime
 
     model_config = ConfigDict(
         from_attributes=True,
-        json_schema_extra={
-            "example": {
-                "id": "6150d1a73f6c06dd3d9e2d1c",
-                "customer_name": "John Doe",
-                "date": "2023-10-15T14:30:00",
-                "service_id": "6150d1a73f6c06dd3d9e2d1b",
-                "status": "pending",
-                "created_at": "2023-09-26T10:00:00",
-                "updated_at": "2023-09-26T10:00:00",
-            }
-        },
+        populate_by_name=True,
+        json_encoders={
+            PyObjectId: str
+        },  # Ensure PyObjectId is serialized to string
     )
 
 
-class BookingList(BaseModel):
-    """Schema for listing Bookings"""
+class PaginatedBookingRead(BaseModel):
+    """Schema for paginated booking results"""
 
     bookings: List[BookingRead]
-    count: int
+    total: int  # Assuming this means total bookings matching query
+    page: int
+    size: int
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True,
+        json_encoders={PyObjectId: str},
+    )

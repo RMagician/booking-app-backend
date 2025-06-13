@@ -2,11 +2,12 @@
 Booking model module
 """
 
-from datetime import datetime
-from enum import Enum, auto
-from typing import Optional
-
-from app.models.service import PyObjectId
+from datetime import datetime, timezone  # Added timezone
+from enum import Enum
+from typing import Optional, Any
+from bson import ObjectId
+from pydantic import BaseModel, Field
+from app.models.service import PyObjectId  # Import the new PyObjectId
 
 
 class BookingStatus(str, Enum):
@@ -18,77 +19,104 @@ class BookingStatus(str, Enum):
     COMPLETED = "completed"
 
 
-class Booking:
-    """
-    Booking model class representing a customer booking in the system
-    """
+class Booking(BaseModel):
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    user_id: str
+    service_id: PyObjectId
+    booking_time: datetime
+    status: str = "confirmed"
+    notes: Optional[str] = None
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
 
-    def __init__(
-        self,
-        id: Optional[PyObjectId] = None,
-        customer_name: str = "",
-        date: datetime = None,
-        service_id: PyObjectId = None,
-        status: str = BookingStatus.PENDING,
-        created_at: Optional[datetime] = None,
-        updated_at: Optional[datetime] = None,
-        **kwargs,
-    ):
-        """
-        Initialize a Booking object
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str, PyObjectId: str}
 
-        Args:
-            id: The ObjectId of the booking
-            customer_name: The name of the customer
-            date: The date and time of the booking
-            service_id: The ID of the service being booked
-            status: The status of the booking
-            created_at: The creation timestamp
-            updated_at: The last update timestamp
-        """
-        self.id = id or PyObjectId()
-        self.customer_name = customer_name
-        self.date = date or datetime.utcnow()
-        self.service_id = service_id
-        self.status = status
-        self.created_at = created_at or datetime.utcnow()
-        self.updated_at = updated_at or self.created_at
+    def __init__(self, **data: Any):
+        raw_id = data.pop("id", None)
+        raw_object_id = data.pop("_id", None)
 
-    @classmethod
-    def from_mongo(cls, data: dict):
-        """
-        Create a Booking object from MongoDB document
+        if raw_id is not None and isinstance(raw_id, str):
+            data["id"] = PyObjectId(raw_id)
+        elif raw_id is not None:
+            data["id"] = raw_id
+        elif raw_object_id is not None and isinstance(raw_object_id, str):
+            data["id"] = PyObjectId(raw_object_id)
+        elif raw_object_id is not None:
+            data["id"] = raw_object_id
+        else:
+            data["id"] = PyObjectId()
 
-        Args:
-            data: The MongoDB document
-
-        Returns:
-            Booking: A Booking object
-        """
-        if not data:
-            return None
-
-        # Convert MongoDB _id to id
-        if data.get("_id"):
-            data["id"] = data.pop("_id")
-
-        # Convert service_id to PyObjectId if it exists
-        if data.get("service_id") and isinstance(data["service_id"], dict):
+        if "service_id" in data and isinstance(data["service_id"], str):
+            data["service_id"] = PyObjectId(data["service_id"])
+        elif (
+            "service_id" in data
+            and isinstance(data["service_id"], ObjectId)
+            and not isinstance(data["service_id"], PyObjectId)
+        ):
             data["service_id"] = PyObjectId(data["service_id"])
 
-        return cls(**data)
+        if "created_at" not in data or data["created_at"] is None:
+            data["created_at"] = datetime.now(timezone.utc)
+        if "updated_at" not in data or data["updated_at"] is None:
+            data["updated_at"] = datetime.now(timezone.utc)
+
+        super().__init__(**data)
+        if raw_object_id is not None:
+            if isinstance(self.id, ObjectId) and not isinstance(
+                self.id, PyObjectId
+            ):
+                self.id = PyObjectId(self.id)
+        elif self.id is None:
+            self.id = PyObjectId()
+
+        if isinstance(self.service_id, ObjectId) and not isinstance(
+            self.service_id, PyObjectId
+        ):
+            self.service_id = PyObjectId(self.service_id)
 
     def to_mongo(self) -> dict:
-        """
-        Convert this Booking object to a MongoDB document
+        data = self.model_dump(by_alias=True, exclude_none=True)
+        # Ensure _id is an ObjectId
+        if "_id" in data and isinstance(data["_id"], PyObjectId):
+            data["_id"] = ObjectId(str(data["_id"]))
+        # Robustly convert service_id to ObjectId if needed
+        if "service_id" in data:
+            if isinstance(data["service_id"], PyObjectId):
+                data["service_id"] = ObjectId(str(data["service_id"]))
+            elif isinstance(data["service_id"], str):
+                # If it's a valid ObjectId string, convert it
+                try:
+                    data["service_id"] = ObjectId(data["service_id"])
+                except Exception:
+                    pass  # Leave as is if not a valid ObjectId string
+        # Ensure datetimes are timezone-aware and in correct format
+        for field_name in ["created_at", "updated_at", "booking_time"]:
+            dt_value = getattr(self, field_name)
+            if isinstance(dt_value, str):
+                parsed_dt = datetime.fromisoformat(
+                    dt_value.replace("Z", "+00:00")
+                )
+                if parsed_dt.tzinfo is None:
+                    parsed_dt = parsed_dt.replace(tzinfo=timezone.utc)
+                data[field_name] = parsed_dt
+            elif dt_value.tzinfo is None:
+                data[field_name] = dt_value.replace(tzinfo=timezone.utc)
+            else:
+                data[field_name] = dt_value
+        return data
 
-        Returns:
-            dict: A MongoDB document
-        """
-        # Create a copy of self.__dict__
-        document = self.__dict__.copy()
-
-        # Convert id to _id for MongoDB
-        document["_id"] = document.pop("id")
-
-        return document
+    @classmethod
+    def from_mongo(cls, data: dict) -> "Booking":
+        if "_id" in data:
+            data["id"] = data.pop("_id")
+        if "service_id" in data and isinstance(data["service_id"], ObjectId):
+            # Pydantic will convert to PyObjectId via validation if the field type is PyObjectId
+            pass
+        return cls(**data)

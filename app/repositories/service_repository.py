@@ -85,7 +85,7 @@ class ServiceRepository:
         try:
             # Convert string ID to ObjectId
             object_id = ObjectId(service_id)
-        except:
+        except Exception:  # Catch generic exception for invalid ObjectId format
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid service ID format: {service_id}",
@@ -93,7 +93,9 @@ class ServiceRepository:
 
         # Query the service by ID
         document = await self.collection.find_one({"_id": object_id})
-        return Service.from_mongo(document)
+        if document:
+            return Service.from_mongo(document)
+        return None  # Explicitly return None if document is not found
 
     async def get_service_by_name(self, name: str) -> Optional[Service]:
         """
@@ -107,7 +109,9 @@ class ServiceRepository:
         """
         # Query the service by name
         document = await self.collection.find_one({"name": name})
-        return Service.from_mongo(document)
+        if document:
+            return Service.from_mongo(document)
+        return None  # Explicitly return None if document is not found
 
     async def list_services(
         self,
@@ -115,6 +119,7 @@ class ServiceRepository:
         limit: int = 100,
         sort_by: str = "name",
         sort_direction: int = 1,
+        category: Optional[str] = None,  # Added category parameter
     ) -> Tuple[List[Service], int]:
         """
         List services with pagination and sorting
@@ -124,17 +129,24 @@ class ServiceRepository:
             limit: Maximum number of records to return
             sort_by: Field to sort by
             sort_direction: Sort direction (1 for ascending, -1 for descending)
+            category: Optional category to filter by  # Added to docstring
 
         Returns:
             Tuple containing:
                 - List of Service objects
-                - Total count of services
+                - Total count of services matching the filter
         """
-        # Get the total count
-        total = await self.collection.count_documents({})
+        query_filter: Dict[str, Any] = {}  # Initialize an empty filter
+        if category:
+            query_filter["category"] = (
+                category  # Add category to filter if provided
+            )
 
-        # Query with pagination and sorting
-        cursor = self.collection.find({})
+        # Get the total count based on the filter
+        total = await self.collection.count_documents(query_filter)
+
+        # Query with filter, pagination, and sorting
+        cursor = self.collection.find(query_filter)
         cursor = cursor.sort(sort_by, sort_direction)
         cursor = cursor.skip(skip).limit(limit)
 

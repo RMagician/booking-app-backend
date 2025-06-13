@@ -11,7 +11,7 @@ from app.schemas.booking import (
     BookingCreate,
     BookingUpdate,
     BookingRead,
-    BookingList,
+    PaginatedBookingRead,  # Ensure this is PaginatedBookingRead
     BookingStatusUpdate,
 )
 from app.models.booking import BookingStatus
@@ -20,7 +20,7 @@ from app.models.booking import BookingStatus
 router = APIRouter(tags=["bookings"])
 
 
-@router.get("/bookings", response_model=BookingList)
+@router.get("/bookings", response_model=PaginatedBookingRead)
 async def list_bookings(
     skip: int = Query(0, ge=0, description="Number of bookings to skip"),
     limit: int = Query(
@@ -46,7 +46,7 @@ async def list_bookings(
         None, description="Search bookings by customer name"
     ),
     booking_repo: BookingRepository = Depends(lambda: BookingRepository()),
-) -> BookingList:
+) -> PaginatedBookingRead:
     """
     List all bookings with pagination, sorting, and filtering options
     """
@@ -62,11 +62,11 @@ async def list_bookings(
         customer_name=customer_name,
     )
 
-    return BookingList(
-        bookings=[
-            BookingRead.model_validate(booking.__dict__) for booking in bookings
-        ],
-        count=count,
+    return PaginatedBookingRead(
+        bookings=[BookingRead.model_validate(booking) for booking in bookings],
+        total=count,  # Ensure this matches the field in PaginatedBookingRead
+        page=skip // limit + 1 if limit > 0 else 1,  # Calculate page
+        size=limit,  # Use limit as size
     )
 
 
@@ -81,7 +81,7 @@ async def create_booking(
     Create a new booking
     """
     booking = await booking_repo.create_booking(booking_data.model_dump())
-    return BookingRead.model_validate(booking.__dict__)
+    return BookingRead.model_validate(booking)
 
 
 @router.get("/bookings/{booking_id}", response_model=BookingRead)
@@ -100,76 +100,49 @@ async def get_booking(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Booking with ID {booking_id} not found",
         )
-    return BookingRead.model_validate(booking.__dict__)
-
-
-@router.put("/bookings/{booking_id}/status", response_model=BookingRead)
-async def update_booking_status(
-    status_data: BookingStatusUpdate,
-    booking_id: str = Path(
-        ..., description="The ID of the booking to update status"
-    ),
-    booking_repo: BookingRepository = Depends(lambda: BookingRepository()),
-) -> BookingRead:
-    """
-    Update a booking's status (Confirmed, Pending, Canceled)
-    """
-    updated_booking = await booking_repo.update_booking(
-        booking_id, {"status": status_data.status}
-    )
-    if not updated_booking:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Booking with ID {booking_id} not found",
-        )
-    return BookingRead.model_validate(updated_booking.__dict__)
-
-
-@router.get("/services/{service_id}/bookings", response_model=BookingList)
-async def list_service_bookings(
-    service_id: str = Path(..., description="The ID of the service"),
-    skip: int = Query(0, ge=0, description="Number of bookings to skip"),
-    limit: int = Query(
-        100, ge=1, le=500, description="Maximum number of bookings to return"
-    ),
-    booking_repo: BookingRepository = Depends(lambda: BookingRepository()),
-) -> BookingList:
-    """
-    List all bookings for a specific service
-    """
-    bookings, count = await booking_repo.get_bookings_by_service(
-        service_id=service_id, skip=skip, limit=limit
-    )
-
-    return BookingList(
-        bookings=[
-            BookingRead.model_validate(booking.__dict__) for booking in bookings
-        ],
-        count=count,
-    )
+    return BookingRead.model_validate(booking)
 
 
 @router.put("/bookings/{booking_id}", response_model=BookingRead)
 async def update_booking(
-    booking_data: BookingUpdate,
+    booking_data: BookingUpdate,  # Moved to be before parameters with defaults
     booking_id: str = Path(..., description="The ID of the booking to update"),
     booking_repo: BookingRepository = Depends(lambda: BookingRepository()),
 ) -> BookingRead:
     """
     Update a booking by ID
     """
-    # Filter out None values to prevent overwriting with None
-    update_data = {
-        k: v for k, v in booking_data.model_dump().items() if v is not None
-    }
-
-    updated_booking = await booking_repo.update_booking(booking_id, update_data)
+    updated_booking = await booking_repo.update_booking(
+        booking_id, booking_data.model_dump(exclude_unset=True)
+    )
     if not updated_booking:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Booking with ID {booking_id} not found",
+            detail=f"Booking with ID {booking_id} not found for update",
         )
-    return BookingRead.model_validate(updated_booking.__dict__)
+    return BookingRead.model_validate(updated_booking)
+
+
+@router.patch("/bookings/{booking_id}/status", response_model=BookingRead)
+async def patch_booking_status(
+    status_data: BookingStatusUpdate,  # Moved to be before parameters with defaults
+    booking_id: str = Path(
+        ..., description="The ID of the booking to update status for"
+    ),
+    booking_repo: BookingRepository = Depends(lambda: BookingRepository()),
+) -> BookingRead:
+    """
+    Update the status of a specific booking
+    """
+    updated_booking = await booking_repo.update_booking_status(
+        booking_id, status_data.status
+    )
+    if not updated_booking:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Booking with ID {booking_id} not found for status update",
+        )
+    return BookingRead.model_validate(updated_booking)
 
 
 @router.delete("/bookings/{booking_id}", status_code=status.HTTP_204_NO_CONTENT)

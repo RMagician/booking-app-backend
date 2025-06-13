@@ -10,14 +10,16 @@ from app.schemas.service import (
     ServiceCreate,
     ServiceUpdate,
     ServiceRead,
-    ServiceList,
+    PaginatedServiceRead,  # Added PaginatedServiceRead
 )
 
 # Define the router with the "services" tag
 router = APIRouter(tags=["services"])
 
 
-@router.get("/services", response_model=ServiceList)
+@router.get(
+    "/services", response_model=PaginatedServiceRead
+)  # Changed ServiceList to PaginatedServiceRead
 async def list_services(
     skip: int = Query(0, ge=0, description="Number of services to skip"),
     limit: int = Query(
@@ -27,20 +29,27 @@ async def list_services(
     sort_direction: int = Query(
         1, ge=-1, le=1, description="Sort direction (1=asc, -1=desc)"
     ),
+    category: Optional[str] = Query(
+        None, description="Filter by category"
+    ),  # Added category query parameter
     service_repo: ServiceRepository = Depends(lambda: ServiceRepository()),
-) -> ServiceList:
+) -> PaginatedServiceRead:  # Changed ServiceList to PaginatedServiceRead
     """
     List all services with pagination and sorting options
     """
     services, count = await service_repo.list_services(
-        skip=skip, limit=limit, sort_by=sort_by, sort_direction=sort_direction
+        skip=skip,
+        limit=limit,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
+        category=category,  # Pass category to repository
     )
 
-    return ServiceList(
-        services=[
-            ServiceRead.model_validate(service.__dict__) for service in services
-        ],
+    return PaginatedServiceRead(  # Changed ServiceList to PaginatedServiceRead
+        services=[ServiceRead.model_validate(service) for service in services],
         count=count,
+        page=skip // limit + 1 if limit > 0 else 1,  # Calculate page
+        size=limit,  # Use limit as size
     )
 
 
@@ -55,7 +64,7 @@ async def create_service(
     Create a new service
     """
     service = await service_repo.create_service(service_data.model_dump())
-    return ServiceRead.model_validate(service.__dict__)
+    return ServiceRead.model_validate(service)
 
 
 @router.get("/services/{service_id}", response_model=ServiceRead)
@@ -74,7 +83,7 @@ async def get_service(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Service with ID {service_id} not found",
         )
-    return ServiceRead.model_validate(service.__dict__)
+    return ServiceRead.model_validate(service)
 
 
 @router.put("/services/{service_id}", response_model=ServiceRead)
@@ -97,7 +106,7 @@ async def update_service(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Service with ID {service_id} not found",
         )
-    return ServiceRead.model_validate(updated_service.__dict__)
+    return ServiceRead.model_validate(updated_service)
 
 
 @router.delete("/services/{service_id}", status_code=status.HTTP_204_NO_CONTENT)

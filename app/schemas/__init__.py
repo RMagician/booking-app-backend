@@ -6,14 +6,14 @@ from app.schemas.service import (
     ServiceCreate,
     ServiceRead,
     ServiceUpdate,
-    ServiceList,
+    PaginatedServiceRead,  # Ensure this is PaginatedServiceRead
 )
 
 from app.schemas.booking import (
     BookingCreate,
     BookingRead,
     BookingUpdate,
-    BookingList,
+    PaginatedBookingRead,  # Ensure this is PaginatedBookingRead
     BookingStatusUpdate,
 )
 
@@ -21,10 +21,10 @@ __all__ = [
     "ServiceCreate",
     "ServiceRead",
     "ServiceUpdate",
-    "ServiceList",
+    "PaginatedServiceRead",  # Ensure this is PaginatedServiceRead
     "BookingCreate",
     "BookingRead",
     "BookingUpdate",
-    "BookingList",
+    "PaginatedBookingRead",  # Ensure this is PaginatedBookingRead
     "BookingStatusUpdate",
 ]

@@ -4,7 +4,9 @@ Service schema module for data validation and conversion
 
 from datetime import datetime
 from typing import List, Optional, Annotated
-from pydantic import BaseModel, Field, field_validator, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
+
+from app.models.service import PyObjectId
 
 
 class ServiceBase(BaseModel):
@@ -23,6 +25,13 @@ class ServiceBase(BaseModel):
         description="Duration of the service in minutes",
     )
     price: float = Field(..., ge=0, description="Price of the service")
+    category: Optional[str] = Field(
+        None, max_length=50, description="Category of the service"
+    )
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
 
     # Validation for price - ensure it has at most 2 decimal places
     @field_validator("price")
@@ -56,6 +65,9 @@ class ServiceUpdate(BaseModel):
     description: Optional[str] = Field(None, max_length=1000)
     duration: Optional[int] = Field(None, gt=0, le=480)
     price: Optional[float] = Field(None, ge=0)
+    category: Optional[str] = Field(
+        None, max_length=50, description="Category of the service"
+    )  # Added category
 
     # Validate price if provided
     @field_validator("price")
@@ -80,7 +92,9 @@ class ServiceUpdate(BaseModel):
         return value
 
     # Ensure at least one field is set
-    @field_validator("name", "description", "duration", "price")
+    @field_validator(
+        "name", "description", "duration", "price", "category"
+    )  # Added category to validator
     @classmethod
     def check_at_least_one_field(cls, value, info):
         """Ensure at least one field is provided for update"""
@@ -95,28 +109,33 @@ class ServiceUpdate(BaseModel):
 class ServiceRead(ServiceBase):
     """Schema for reading a Service"""
 
-    id: str = Field(..., description="Unique identifier for the service")
+    id: PyObjectId = Field(..., description="Unique identifier for the service")
     created_at: datetime
     updated_at: datetime
+    # category is inherited from ServiceBase and will be Optional[str]
+    # If category should always be present in ServiceRead, define it here explicitly as str, e.g.:
+    # category: Optional[str] = Field(None, max_length=50, description="Category of the service")
+    # For now, it will be Optional as per ServiceBase.
 
     model_config = ConfigDict(
         from_attributes=True,
-        json_schema_extra={
-            "example": {
-                "id": "6150d1a73f6c06dd3d9e2d1b",
-                "name": "Haircut",
-                "description": "Basic haircut service",
-                "duration": 30,
-                "price": 25.50,
-                "created_at": "2023-09-26T10:00:00",
-                "updated_at": "2023-09-26T10:00:00",
-            }
-        },
+        populate_by_name=True,
+        json_encoders={
+            PyObjectId: str
+        },  # Ensure PyObjectId is serialized to string
     )
 
 
-class ServiceList(BaseModel):
-    """Schema for listing Services"""
+class PaginatedServiceRead(BaseModel):
+    """Schema for paginated listing of Services"""
 
     services: List[ServiceRead]
-    count: int
+    count: int  # Total number of services matching the query
+    page: int
+    size: int
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True,
+        json_encoders={PyObjectId: str},
+    )

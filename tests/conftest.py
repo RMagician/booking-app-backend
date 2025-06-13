@@ -1,0 +1,102 @@
+"""
+Test configuration and shared fixtures
+"""
+
+import asyncio
+import pytest
+from typing import AsyncGenerator, Generator, Any
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from fastapi.testclient import TestClient
+from httpx import AsyncClient
+from app.main import app
+
+
+class TestSettings:
+    """Test settings with test database name"""
+
+    ENV: str = "test"
+    MONGODB_URI: str = "mongodb://admin:secret@localhost:27017"
+    MONGODB_DB_NAME: str = "booking_app_test"
+    API_PREFIX: str = "/api"
+
+
+@pytest.fixture(scope="session")
+def test_settings() -> TestSettings:
+    """Get test settings override"""
+    return TestSettings()
+
+
+@pytest.fixture(scope="session")
+def event_loop():
+    """Create an event loop for the test session"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    yield loop
+    loop.close()
+
+
+@pytest.fixture(scope="function")
+async def test_db(test_settings) -> AsyncGenerator[AsyncIOMotorDatabase, None]:
+    """Create and return a test database connection"""
+    # Connect to MongoDB using test database
+    mongo_client = AsyncIOMotorClient(test_settings.MONGODB_URI)
+    mongo_db = mongo_client[test_settings.MONGODB_DB_NAME]
+
+    # Set the database globally for the tests
+    import app.database.mongodb
+
+    app.database.mongodb.db_client = mongo_client
+    app.database.mongodb.db = mongo_db
+
+    # Clean up all collections before starting tests
+    collection_names = await mongo_db.list_collection_names()
+    for collection_name in collection_names:
+        await mongo_db.drop_collection(collection_name)
+
+    yield mongo_db
+
+    # Clean up after all tests are done
+    collection_names = await mongo_db.list_collection_names()
+    for collection_name in collection_names:
+        await mongo_db.drop_collection(collection_name)
+
+    # Close connection
+    mongo_client.close()
+    app.database.mongodb.db_client = None
+    app.database.mongodb.db = None
+
+
+@pytest.fixture
+def test_client(test_db) -> Generator[TestClient, Any, None]:
+    """Create and return a TestClient for the FastAPI application"""
+    with TestClient(app) as client:
+        yield client
+
+
+@pytest.fixture
+async def async_client() -> AsyncGenerator[AsyncClient, None]:
+    """Create and return an AsyncClient for the FastAPI application"""
+    test_server_base_url = "http://testserver"
+
+    async with AsyncClient(base_url=test_server_base_url) as client:
+        # Use TestClient to handle the requests
+        with TestClient(app) as test_client:
+            # Share the app with the AsyncClient
+            client.app = app
+            yield client
+
+
+@pytest.fixture
+def service_repository():
+    """Service repository fixture"""
+    from app.repositories.service_repository import ServiceRepository
+
+    return ServiceRepository()
+
+
+@pytest.fixture
+def booking_repository():
+    """Booking repository fixture"""
+    from app.repositories.booking_repository import BookingRepository
+
+    return BookingRepository()
