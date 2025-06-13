@@ -39,6 +39,12 @@ async def list_bookings(
     date_to: Optional[datetime] = Query(
         None, description="Filter bookings until this date (inclusive)"
     ),
+    service_id: Optional[str] = Query(
+        None, description="Filter bookings by service ID"
+    ),
+    customer_name: Optional[str] = Query(
+        None, description="Search bookings by customer name"
+    ),
     booking_repo: BookingRepository = Depends(lambda: BookingRepository()),
 ) -> BookingList:
     """
@@ -52,6 +58,8 @@ async def list_bookings(
         status_filter=status,
         date_from=date_from,
         date_to=date_to,
+        service_id=service_id,
+        customer_name=customer_name,
     )
 
     return BookingList(

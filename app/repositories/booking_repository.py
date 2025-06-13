@@ -106,16 +106,16 @@ class BookingRepository:
         try:
             # Convert string ID to ObjectId
             object_id = ObjectId(service_id)
-        except:
+        except Exception:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid service ID format: {service_id}",
             )
 
         # Get the total count
-        total = await self.collection.count_documents({"service_id": object_id})
-
-        # Query with pagination
+        total = await self.collection.count_documents(
+            {"service_id": object_id}
+        )  # Query with pagination
         cursor = self.collection.find({"service_id": object_id})
         cursor = cursor.sort("date", 1)  # Sort by date ascending
         cursor = cursor.skip(skip).limit(limit)
@@ -134,6 +134,8 @@ class BookingRepository:
         status_filter: Optional[BookingStatus] = None,
         date_from: Optional[datetime] = None,
         date_to: Optional[datetime] = None,
+        service_id: Optional[str] = None,
+        customer_name: Optional[str] = None,
     ) -> Tuple[List[Booking], int]:
         """
         List bookings with pagination, sorting and filtering
@@ -146,6 +148,8 @@ class BookingRepository:
             status_filter: Filter by booking status (optional)
             date_from: Filter bookings from this date (inclusive, optional)
             date_to: Filter bookings until this date (inclusive, optional)
+            service_id: Filter bookings by service ID (optional)
+            customer_name: Search bookings by customer name (optional)
 
         Returns:
             Tuple containing:
@@ -166,6 +170,24 @@ class BookingRepository:
                 date_filter["$lte"] = date_to
             if date_filter:
                 filter_query["date"] = date_filter
+
+        # Filter by service_id if provided
+        if service_id:
+            try:
+                service_object_id = ObjectId(service_id)
+                filter_query["service_id"] = service_object_id
+            except:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid service ID format: {service_id}",
+                )
+
+        # Search by customer name (case-insensitive)
+        if customer_name:
+            filter_query["customer_name"] = {
+                "$regex": customer_name,
+                "$options": "i",
+            }
 
         # Get the total count
         total = await self.collection.count_documents(filter_query)
