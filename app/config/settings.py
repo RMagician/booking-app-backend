@@ -2,27 +2,31 @@
 Configuration module for loading environment variables
 """
 
+import os
 from functools import lru_cache
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from dotenv import load_dotenv
+from pydantic import BaseModel, Field
+
+# Load environment variables from .env file
+load_dotenv(encoding="utf-8")
 
 
-class Settings(BaseSettings):
+class Settings(BaseModel):
     """Application settings loaded from environment variables"""
 
     # Environment
-    ENV: str = Field(default="development")
+    ENV: str = Field(default=os.getenv("ENV", "development"))
 
     # MongoDB
-    MONGODB_URI: str = Field(default="mongodb://localhost:27017")
-    MONGODB_DB_NAME: str = Field(default="booking_app")
+    MONGODB_URI: str = Field(
+        default=os.getenv("MONGODB_URI", "mongodb://localhost:27017")
+    )
+    MONGODB_DB_NAME: str = Field(
+        default=os.getenv("MONGODB_DB_NAME", "booking_app")
+    )
 
     # API
-    API_PREFIX: str = Field(default="/api")
-
-    model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", case_sensitive=True
-    )
+    API_PREFIX: str = Field(default=os.getenv("API_PREFIX", "/api"))
 
 
 @lru_cache()

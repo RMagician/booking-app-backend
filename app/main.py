@@ -7,7 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.database import connect_to_mongodb, close_mongodb_connection
-from app.routes import health_router
+from app.routes import health_router, service_router
+from app.repositories.service_repository import ServiceRepository
 
 
 def create_application() -> FastAPI:
@@ -30,14 +31,18 @@ def create_application() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-    )
-
-    # Add startup and shutdown events
+    )  # Add startup and shutdown events
     application.add_event_handler("startup", connect_to_mongodb)
     application.add_event_handler("shutdown", close_mongodb_connection)
 
-    # Add routers with prefix
+    # Initialize service repository indexes at startup
+    @application.on_event("startup")
+    async def init_repositories():
+        service_repo = ServiceRepository()
+        await service_repo.ensure_indexes()  # Add routers with prefix
+
     application.include_router(health_router, prefix=settings.API_PREFIX)
+    application.include_router(service_router, prefix=settings.API_PREFIX)
 
     return application
 
