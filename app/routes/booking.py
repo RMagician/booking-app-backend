@@ -3,7 +3,7 @@ Booking API routes module
 """
 
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
 
 from app.repositories.booking_repository import BookingRepository
@@ -12,6 +12,7 @@ from app.schemas.booking import (
     BookingUpdate,
     BookingRead,
     BookingList,
+    BookingStatusUpdate,
 )
 from app.models.booking import BookingStatus
 
@@ -52,9 +53,11 @@ async def list_bookings(
         date_from=date_from,
         date_to=date_to,
     )
-    
+
     return BookingList(
-        bookings=[BookingRead.model_validate(booking.__dict__) for booking in bookings],
+        bookings=[
+            BookingRead.model_validate(booking.__dict__) for booking in bookings
+        ],
         count=count,
     )
 
@@ -75,7 +78,9 @@ async def create_booking(
 
 @router.get("/bookings/{booking_id}", response_model=BookingRead)
 async def get_booking(
-    booking_id: str = Path(..., description="The ID of the booking to retrieve"),
+    booking_id: str = Path(
+        ..., description="The ID of the booking to retrieve"
+    ),
     booking_repo: BookingRepository = Depends(lambda: BookingRepository()),
 ) -> BookingRead:
     """
@@ -88,6 +93,28 @@ async def get_booking(
             detail=f"Booking with ID {booking_id} not found",
         )
     return BookingRead.model_validate(booking.__dict__)
+
+
+@router.put("/bookings/{booking_id}/status", response_model=BookingRead)
+async def update_booking_status(
+    status_data: BookingStatusUpdate,
+    booking_id: str = Path(
+        ..., description="The ID of the booking to update status"
+    ),
+    booking_repo: BookingRepository = Depends(lambda: BookingRepository()),
+) -> BookingRead:
+    """
+    Update a booking's status (Confirmed, Pending, Canceled)
+    """
+    updated_booking = await booking_repo.update_booking(
+        booking_id, {"status": status_data.status}
+    )
+    if not updated_booking:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Booking with ID {booking_id} not found",
+        )
+    return BookingRead.model_validate(updated_booking.__dict__)
 
 
 @router.get("/services/{service_id}/bookings", response_model=BookingList)
@@ -105,9 +132,11 @@ async def list_service_bookings(
     bookings, count = await booking_repo.get_bookings_by_service(
         service_id=service_id, skip=skip, limit=limit
     )
-    
+
     return BookingList(
-        bookings=[BookingRead.model_validate(booking.__dict__) for booking in bookings],
+        bookings=[
+            BookingRead.model_validate(booking.__dict__) for booking in bookings
+        ],
         count=count,
     )
 
@@ -125,7 +154,7 @@ async def update_booking(
     update_data = {
         k: v for k, v in booking_data.model_dump().items() if v is not None
     }
-    
+
     updated_booking = await booking_repo.update_booking(booking_id, update_data)
     if not updated_booking:
         raise HTTPException(

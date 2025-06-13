@@ -47,6 +47,12 @@ class BookingCreate(BookingBase):
         return value
 
 
+class BookingStatusUpdate(BaseModel):
+    """Schema for updating just the status of a Booking"""
+
+    status: BookingStatus = Field(..., description="New status of the booking")
+
+
 class BookingUpdate(BaseModel):
     """Schema for updating a Booking - all fields optional"""
 

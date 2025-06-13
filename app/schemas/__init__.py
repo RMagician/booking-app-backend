@@ -14,6 +14,7 @@ from app.schemas.booking import (
     BookingRead,
     BookingUpdate,
     BookingList,
+    BookingStatusUpdate,
 )
 
 __all__ = [
@@ -25,4 +26,5 @@ __all__ = [
     "BookingRead",
     "BookingUpdate",
     "BookingList",
+    "BookingStatusUpdate",
 ]
